@@ -27,6 +27,20 @@ with every Epson correction off, so each scan uses the same fixed settings.
 - **Measure** lengths on any product, saved per specimen with the pixels-per-cm factor.
 - **Calibrate** tab for timing and file-size runs across resolutions and bit depths.
 
+## Screenshots
+
+![Scan tab, archival view](docs/scandeck_archival.png)
+*The Scan tab with both sides of UM-030-A saved: the archival images (`_ta`, `_ba`) carry a clean QR code below the ruler, the green marks show each label's QR code matched the leaf ID, and the grid on the left shows which leaves have both sides done.*
+
+![Scan tab, leaf view](docs/scandeck_leaf.png)
+*The same leaf in the Leaf view: the segmented products (`_tl`, `_bl`), leaf only on black, which the Scanned strip below shows for every leaf.*
+
+![Measure tab](docs/scandeck_measure.png)
+*The Measure tab on the bottom side of UM-025-A, where a line across the ruler's 0–5 cm marks reads 50.01 mm at 944.88 px/cm (2400 dpi).*
+
+![Scan settings](docs/scandeck_settings.png)
+*Scan settings: resolution and bit depth, the Auto area's detection threshold and paddings, the formats to save, and whether the leaf segmentation keeps the petiole.*
+
 ## Requirements
 
 - macOS (developed on macOS 26, Apple silicon) and an Epson Perfection V370 on USB.
