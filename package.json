@@ -1,0 +1,22 @@
+{
+  "name": "scandeck",
+  "productName": "ScanDeck",
+  "version": "0.1.0",
+  "description": "Two-sided leaf scanning for the Epson Perfection V370: auto scan area from a prescan (OpenVINO YOLO), TapeDeck-style leaf IDs, JPEG XL masters, calibration gallery.",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "start:mock": "env -u ELECTRON_RUN_AS_NODE electron . --mock",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "probe:build": "swiftc -swift-version 5 -O -o probe/icprobe probe/icprobe.swift && swiftc -swift-version 5 -O -o probe/qrtool probe/qrtool.swift",
+    "validate": "node validation/run_validation_tests.mjs",
+    "ov:build": "P=$(brew --prefix openvino) && for t in ovdetect ovseg; do clang -O2 -o probe/$t probe/$t.c -I$P/include -L$P/lib -lopenvino_c -Wl,-rpath,$P/lib || exit 1; done",
+    "models:fetch": "node src/main/models.js"
+  },
+  "author": "William Weaver",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^44.5.1"
+  }
+}

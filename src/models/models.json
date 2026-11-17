@@ -1,0 +1,80 @@
+{
+  "about": "OpenVINO models ScanDeck downloads into src/models/<dir>/ when they are missing (src/main/models.js, npm run models:fetch). From LeafMachine3 on Hugging Face, pinned to a revision and checked by sha256. Model weights: AGPL-3.0 (Ultralytics).",
+  "models": [
+    {
+      "dir": "plant_detector",
+      "repo": "phyloforfun/lm3_plant_detector__yolo26n_det_640",
+      "revision": "f1028f24869daa742693046fb5eca957e547929c",
+      "files": [
+        {
+          "name": "metadata.yaml",
+          "src": "openvino/model_openvino_model/metadata.yaml",
+          "bytes": 601,
+          "sha256": "2aa693c570d2ef5116592dfedcc06cae0c8060b477da9659302d88404091ab81"
+        },
+        {
+          "name": "best.bin",
+          "src": "openvino/model_openvino_model/best.bin",
+          "bytes": 9607536,
+          "sha256": "413d3b5a6416c5a73e4a3fa94422b1be51b0629e2d92dd59bb9aa3d101547662"
+        },
+        {
+          "name": "best.xml",
+          "src": "openvino/model_openvino_model/best.xml",
+          "bytes": 377265,
+          "sha256": "d4a35217d6a97a2faf8b4aba20a46f5a941c4ee597a14d88acfbd2534c6eb7c4"
+        }
+      ]
+    },
+    {
+      "dir": "archival_detector",
+      "repo": "phyloforfun/lm3_archival_detector__yolo26n_det_640",
+      "revision": "cb621ab07b3d99a7a457853ef2ce1417db5d47b0",
+      "files": [
+        {
+          "name": "metadata.yaml",
+          "src": "openvino/model_openvino_model/metadata.yaml",
+          "bytes": 574,
+          "sha256": "f1d2035a1dc879176e41aa8a1a10dd5d9f058949420c4c8aeca3cf59538636ed"
+        },
+        {
+          "name": "best.bin",
+          "src": "openvino/model_openvino_model/best.bin",
+          "bytes": 9607536,
+          "sha256": "062aec809c226c80d0868f597499a79331ff435b1648db39b9b96bc6adbf657f"
+        },
+        {
+          "name": "best.xml",
+          "src": "openvino/model_openvino_model/best.xml",
+          "bytes": 377243,
+          "sha256": "5868699c8161701060cddaebd1e5db7e6e2626e476fafeec0b49b7305eb93767"
+        }
+      ]
+    },
+    {
+      "dir": "leaf_segmenter",
+      "repo": "phyloforfun/lm3_leaf_segmenter__yolo26x_seg_1024",
+      "revision": "66eae346cee62ec1dfda2ba4a4a327325509e633",
+      "files": [
+        {
+          "name": "metadata.yaml",
+          "src": "openvino/model_openvino_model/metadata.yaml",
+          "bytes": 494,
+          "sha256": "4e3880b67c34a2e0faf94772eca2dfd0b2eb5c107ce8a04e0bbf072b9fe33f72"
+        },
+        {
+          "name": "best.bin",
+          "src": "openvino/model_openvino_model/best.bin",
+          "bytes": 251179264,
+          "sha256": "6e6048c8d6399eb3f5e4a390255539143d9f1279646f4e1d2abe40ccf48eaa2b"
+        },
+        {
+          "name": "best.xml",
+          "src": "openvino/model_openvino_model/best.xml",
+          "bytes": 637363,
+          "sha256": "ad70f6d5a4bac4b5f17360ff104fcd119ff56a2c61d6e4f981e130922eccf976"
+        }
+      ]
+    }
+  ]
+}

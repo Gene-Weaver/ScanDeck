@@ -1,0 +1,33 @@
+# Node / Electron
+node_modules/
+dist/
+*.log
+
+# Claude Code / scratch temp files
+*.tmp.*
+scratch_designs/
+
+# Backups kept when replacing files (<name>.bak-<date>)
+*.bak-*
+
+# Built helpers (npm run probe:build / ov:build) and the launcher app
+probe/icprobe
+probe/ovdetect
+probe/ovseg
+probe/qrtool
+launcher/ScanDeck.app/
+
+# Models: downloaded from Hugging Face on first run (src/models/models.json says from where)
+src/models/*/
+
+# Local only: the Epson driver installer, scanner probe reports and output, test scans, planning notes
+driver/
+probe/reports/
+probe/out/
+validation_tests_out/
+test_LM3/
+PLAN.md
+
+# OS
+.DS_Store
+Icon?

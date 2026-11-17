@@ -1,0 +1,57 @@
+'use strict';
+const { contextBridge, ipcRenderer } = require('electron');
+
+const on = (channel) => (cb) => { const h = (_e, v) => cb(v); ipcRenderer.on(channel, h); return () => ipcRenderer.removeListener(channel, h); };
+
+contextBridge.exposeInMainWorld('scandeck', {
+  boot: () => ipcRenderer.sendSync('boot'),
+  config: () => ipcRenderer.invoke('config'),
+  saveSettings: (s) => ipcRenderer.invoke('settings:save', s),
+  flushSettingsSync: (s) => ipcRenderer.sendSync('settings:flush-sync', s),
+  scanner: {
+    status: () => ipcRenderer.invoke('scanner:status'),
+    caps: () => ipcRenderer.invoke('scanner:caps'),
+  },
+  scan: (body) => ipcRenderer.invoke('scan:run', body),
+  confirmScan: (choice) => ipcRenderer.invoke('scan:confirm', choice),
+  onScanConfirm: on('scan-confirm'),
+  cancelScan: () => ipcRenderer.invoke('scan:cancel'),
+  leaf: (folder, id) => ipcRenderer.invoke('leaf:get', { folder, id }),
+  leafStatus: (folder) => ipcRenderer.invoke('leaves:status', { folder }),
+  leaves: (folder, sort) => ipcRenderer.invoke('leaves:list', { folder, sort }),
+  calib: {
+    runs: () => ipcRenderer.invoke('calib:runs'),
+    start: (opts) => ipcRenderer.invoke('calib:start', opts),
+    stop: () => ipcRenderer.invoke('calib:stop'),
+    status: () => ipcRenderer.invoke('calib:status'),
+    remove: (id, label) => ipcRenderer.invoke('calib:remove', { id, label }),
+    compress: (id) => ipcRenderer.invoke('calib:compress', id),
+  },
+  measure: {
+    image: (q) => ipcRenderer.invoke('measure:image', q),
+    load: (folder, id) => ipcRenderer.invoke('measure:load', { folder, id }),
+    save: (q) => ipcRenderer.invoke('measure:save', q),
+  },
+  openPath: (p) => ipcRenderer.invoke('path:open', p),
+  revealPath: (p) => ipcRenderer.invoke('path:reveal', p),
+  browse: (p) => ipcRenderer.invoke('path:browse', p),
+  openFolder: (which) => ipcRenderer.invoke('folder:open', which),
+  chooseDir: (current) => ipcRenderer.invoke('dir:choose', current),
+  onScanProgress: on('scan-progress'),
+  onScanPhase: on('scan-phase'),
+  onScanQuality: on('scan-quality'),
+  onQualityUpdated: on('quality-updated'),
+  onModels: on('models'),
+  retryModels: () => ipcRenderer.invoke('models:retry'),
+  detectorStatus: () => ipcRenderer.invoke('detector:status'),
+  onCalibLine: on('calib-line'),
+  onCalibDone: on('calib-done'),
+  onCompressDone: on('compress-done'),
+  onSaveDone: on('save-done'),
+  onSaveProgress: on('save-progress'),
+  qrMatrix: (value) => ipcRenderer.invoke('qr:matrix', value),
+  resegKeep: (folder, id) => ipcRenderer.invoke('seg:keep', { folder, id }),
+  reseg: (q) => ipcRenderer.invoke('seg:redo', q),
+  saverStatus: () => ipcRenderer.invoke('saver:status'),
+  onMenu: on('menu'),
+});

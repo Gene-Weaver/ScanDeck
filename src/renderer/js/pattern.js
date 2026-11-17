@@ -1,0 +1,250 @@
+// Copied from TapeDeck (src/renderer/js/pattern.js) so leaf IDs expand exactly like the printed labels; keep in sync.
+// Expand Single / Pattern / Batch inputs into a list of label values.
+// A value is { text, n, i, fields } where `fields` holds CSV columns.
+
+export function pad(num, width) {
+  const s = String(Math.abs(num));
+  return (num < 0 ? '-' : '') + (width > s.length ? '0'.repeat(width - s.length) + s : s);
+}
+
+export function letters(n, upper = true) {   // 0 -> A, 25 -> Z, 26 -> AA
+  let s = '';
+  n = Math.max(0, Math.floor(n));
+  do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return upper ? s : s.toLowerCase();
+}
+
+function isoDate(d = new Date()) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1, 2)}-${pad(d.getDate(), 2)}`;
+}
+function isoTime(d = new Date()) {
+  return `${pad(d.getHours(), 2)}:${pad(d.getMinutes(), 2)}`;
+}
+
+/** Replace {tokens} in a template with values. Supported:
+ *  {n} {n:06}       counter (and zero padded)
+ *  {i} {i:03}       1-based index within the batch
+ *  {A} {a}          letters from the counter (0 -> A)
+ *  {text}           the batch line / single text
+ *  {date} {time}    now
+ *  {col}            any CSV column by header name
+ */
+export function expand(template, value) {
+  if (template == null) return '';
+  return String(template).replace(/\{([^{}:]+)(?::([^{}]*))?\}/g, (m, key, fmt) => {
+    key = key.trim();
+    const num = (v) => (fmt && /^\d+$/.test(fmt) ? pad(v, parseInt(fmt, 10)) : String(v));
+    switch (key) {
+      case 'n': return num(value.n ?? 0);
+      case 'i': return num(value.i ?? 1);
+      case 'A': return letters(value.n ?? 0, true);
+      case 'a': return letters(value.n ?? 0, false);
+      case 'text': return value.text ?? '';
+      case 'date': return isoDate();
+      case 'time': return isoTime();
+      default:
+        if (value.fields && key in value.fields) return value.fields[key];
+        return m;   // leave unknown tokens visible so the user notices
+    }
+  });
+}
+
+export function hasTokens(s) { return /\{[^{}]+\}/.test(String(s ?? '')); }
+
+/** Counter pattern: prefix + padded counter + suffix. */
+export function counterValues({ prefix = '', suffix = '', start = 1, end = 10, step = 1, padWidth = 0, count = null }) {
+  start = Number(start) || 0; step = Number(step) || 1; padWidth = Number(padWidth) || 0;
+  const out = [];
+  let total;
+  if (count != null && count !== '') total = Math.max(0, Math.floor(Number(count)));
+  else total = step === 0 ? 0 : Math.max(0, Math.floor((Number(end) - start) / step) + 1);
+  total = Math.min(total, 100000);
+  for (let k = 0; k < total; k++) {
+    const n = start + k * step;
+    out.push({ text: `${prefix}${pad(n, padWidth)}${suffix}`, n, i: k + 1, fields: {} });
+  }
+  return out;
+}
+
+/** Template pattern: template with tokens, iterated over a counter range. */
+export function templateValues({ template = 'LEAF-{n:06}', start = 1, count = 10, step = 1 }) {
+  start = Number(start) || 0; step = Number(step) || 1;
+  count = Math.min(100000, Math.max(0, Math.floor(Number(count) || 0)));
+  const out = [];
+  for (let k = 0; k < count; k++) {
+    const v = { n: start + k * step, i: k + 1, text: '', fields: {} };
+    v.text = expand(template, v);
+    out.push(v);
+  }
+  return out;
+}
+
+/** Minimal CSV parser (handles quotes, commas/tabs/semicolons). */
+export function parseCsv(text, delimiter = null) {
+  const rows = [];
+  let row = [], cell = '', q = false;
+  const d = delimiter || detectDelimiter(text);
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === d) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += c;
+  }
+  if (cell.length || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim() !== ''));
+}
+
+export function detectDelimiter(text) {
+  const first = text.split(/\r?\n/).find(l => l.trim()) || '';
+  const counts = [[',', (first.match(/,/g) || []).length], ['\t', (first.match(/\t/g) || []).length], [';', (first.match(/;/g) || []).length]];
+  counts.sort((a, b) => b[1] - a[1]);
+  return counts[0][1] > 0 ? counts[0][0] : ',';
+}
+
+/** Batch values from pasted text. With header=true the first row names the columns. */
+export function batchValues({ text = '', header = false, template = '' }) {
+  const rows = parseCsv(text);
+  if (!rows.length) return [];
+  let cols = null;
+  if (header) cols = rows.shift().map(c => c.trim());
+  return rows.map((r, k) => {
+    const fields = {};
+    if (cols) cols.forEach((c, j) => { fields[c] = r[j] ?? ''; });
+    else r.forEach((c, j) => { fields[`c${j + 1}`] = c; });
+    const v = { n: k + 1, i: k + 1, text: r[0] ?? '', fields };
+    if (template && template.trim()) v.text = expand(template, v);
+    return v;
+  });
+}
+
+// ---- Segment patterns: {Project}-{Item}-{Number}, last segment cycles fastest -------------
+
+export function lettersToIndex(s) {   // inverse of letters(): 'A' -> 0, 'Z' -> 25, 'AA' -> 26, 'BZ' -> 77
+  s = String(s || 'A').toUpperCase().replace(/[^A-Z]/g, '') || 'A';
+  let n = -1;
+  for (const c of s) n = (n + 1) * 26 + (c.charCodeAt(0) - 65);
+  return n;
+}
+
+/** Expand one segment into its list of strings. */
+export function segmentValues(seg) {
+  const cap = 100000;
+  if (seg.type === 'letters') {
+    const a = lettersToIndex(seg.start), b = lettersToIndex(seg.end);
+    const lo = Math.min(a, b), hi = Math.min(Math.max(a, b), lo + cap);
+    const upper = !/[a-z]/.test(String(seg.start || ''));
+    const out = []; for (let k = lo; k <= hi; k++) out.push(letters(k, upper)); return out;
+  }
+  if (seg.type === 'number') {
+    const a = Number(seg.start) || 0, b = Number(seg.end ?? seg.start) || 0, step = Math.max(1, Math.abs(Number(seg.step) || 1));
+    const padW = Number(seg.pad) || 0;
+    const out = [];
+    if (a <= b) for (let v = a; v <= b && out.length < cap; v += step) out.push(pad(v, padW));
+    else for (let v = a; v >= b && out.length < cap; v -= step) out.push(pad(v, padW));
+    return out;
+  }
+  return [String(seg.value ?? '')];
+}
+
+/**
+ * pattern: { separator: '-', segments: [{ name, type: 'text'|'letters'|'number', ... }], from, to }
+ * Returns { values, total } where values are the [from..to] slice (1-based, inclusive) of the series.
+ * Each value: { text, n (1-based position in the series), i (1-based within the slice), fields: {name: part} }.
+ */
+function seriesOf(pattern) {
+  const segs = (pattern.segments || []).filter(Boolean);
+  const lists = segs.map(segmentValues);
+  const total = lists.reduce((p, l) => p * l.length, segs.length ? 1 : 0);
+  const sep = pattern.separator ?? '-';
+  /** The n-th value (1-based) of the series. */
+  const at = (n, from = 1) => {
+    let rem = n - 1; const parts = new Array(lists.length);
+    for (let s = lists.length - 1; s >= 0; s--) { const L = lists[s].length; parts[s] = lists[s][rem % L]; rem = Math.floor(rem / L); }
+    const fields = {}; segs.forEach((sg, k) => { fields[sg.name || `s${k + 1}`] = parts[k]; });
+    return { text: parts.join(sep), n, i: n - from + 1, fields };
+  };
+  return { total, at };
+}
+
+export function patternSeries(pattern) {
+  const { total, at } = seriesOf(pattern);
+  const from = Math.max(1, Math.floor(Number(pattern.from) || 1));
+  const to = Math.min(total, Math.floor(Number(pattern.to) || total));
+  const values = [];
+  for (let n = from; n <= to; n++) values.push(at(n, from));
+  return { values, total, from, to };
+}
+
+/** Up to `max` values spread evenly over the whole series (ignoring the print range), for measuring text widths. */
+export function patternSample(pattern, max = 4000) {
+  const { total, at } = seriesOf(pattern);
+  if (total <= max) return Array.from({ length: total }, (_, k) => at(k + 1));
+  const out = [];
+  for (let k = 0; k < max; k++) out.push(at(1 + Math.round(k * (total - 1) / (max - 1))));
+  return out;
+}
+
+/** Up to `max` items of a list spread evenly over it (always including the first and last). */
+export function spread(list, max = 4000) {
+  if (list.length <= max) return list;
+  const out = [];
+  for (let k = 0; k < max; k++) out.push(list[Math.round(k * (list.length - 1) / (max - 1))]);
+  return out;
+}
+
+export function defaultPattern() {
+  return { separator: '-', from: 1, to: 3, _v: 2, segments: [
+    { name: 'Project', type: 'text', value: 'UM' },
+    { name: 'Number', type: 'number', start: 1, end: 52, pad: 3 },
+    { name: 'Letter', type: 'letters', start: 'A', end: 'C' },
+  ] };
+}
+
+// ---- Table mode: hand-built rows whose columns are the pattern's segments --------------------
+
+/** Format one cell the way its segment would: zero-pad numbers, match the letter case of the segment's start. */
+export function normalizeCell(seg, v) {
+  v = String(v ?? '').trim();
+  if (!v || !seg) return v;
+  if (seg.type === 'number' && /^-?\d+$/.test(v)) return pad(parseInt(v, 10), Number(seg.pad) || 0);
+  if (seg.type === 'letters' && /^[a-z]+$/i.test(v)) return /[a-z]/.test(String(seg.start || 'A')) ? v.toLowerCase() : v.toUpperCase();
+  return v;
+}
+
+export function rowComplete(row, segCount) {
+  for (let j = 0; j < segCount; j++) if (!String((row || [])[j] ?? '').trim()) return false;
+  return segCount > 0;
+}
+
+/**
+ * rows: [[cell, cell, ...], ...] aligned with pattern.segments. Only complete rows become labels.
+ * Each value: { text, n (1-based row number), i (1-based among printed), fields }.
+ */
+export function tableValues(rows, pattern) {
+  const segs = pattern.segments || [], sep = pattern.separator ?? '-';
+  const out = [];
+  (rows || []).forEach((row, k) => {
+    if (!rowComplete(row, segs.length)) return;
+    const cells = segs.map((sg, j) => normalizeCell(sg, row[j]));
+    const fields = {}; segs.forEach((sg, j) => { fields[sg.name || `s${j + 1}`] = cells[j]; });
+    out.push({ text: cells.join(sep), n: k + 1, i: out.length + 1, fields, row: k });
+  });
+  return out;
+}
+
+/** Split pasted text into rows of cells (tabs, commas or the pattern separator). */
+export function parseTableText(text, sep = '-') {
+  const lines = String(text || '').split(/\r?\n/).map(l => l.replace(/\s+$/, '')).filter(l => l.trim());
+  return lines.map(l => {
+    if (l.includes('\t')) return l.split('\t');
+    if (l.includes(',')) return l.split(',');
+    if (sep && l.includes(sep)) return l.split(sep);
+    return [l];
+  }).map(cells => cells.map(c => c.trim()));
+}

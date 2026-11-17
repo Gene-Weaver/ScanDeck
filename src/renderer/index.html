@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: sdimg:; font-src 'self' data:;">
+<title>ScanDeck</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo"></span><span>ScanDeck</span></div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="scan" class="active" data-tip="⌘1">Scan</button>
+    <button data-tab="measure" data-tip="⌘2">Measure</button>
+    <button data-tab="calibrate" data-tip="⌘3">Calibrate</button>
+  </nav>
+  <div class="chip-wrap">
+    <button id="profileChip" class="chip" aria-haspopup="true" aria-expanded="false"></button>
+    <div id="profilePop" class="pop" role="dialog" aria-label="Scan settings">
+      <div class="pop-head"><strong>Scan settings</strong><span class="tip" data-tip="Used for every scan in the Scan tab. Epson's automatic corrections are always off.">i</span></div>
+      <div class="field"><span>Resolution</span><div class="seg mono" id="profDpi"></div></div>
+      <div class="field"><span>Color depth</span><div class="seg" id="profBits"></div></div>
+      <div class="field"><span>Area <span class="tip" data-tip="Measured from the corner of the glass (top-left of the image).">i</span></span>
+        <div class="seg" id="profArea"></div>
+        <div class="row dims hidden" id="profCustom"><input id="profW" type="number" min="1" max="21.5" step="0.5"> × <input id="profH" type="number" min="1" max="29.7" step="0.5"> cm</div>
+        <div class="row dims hidden" id="profAuto">
+          <label class="lbl" data-tip="Detections scoring at least this much count toward the scan area">Threshold <input id="profThr" type="number" min="0.01" max="0.95" step="0.05"></label>
+          <label class="lbl" data-tip="Extra margin around the scan area (the box around all detected items)">Padding (cm) <input id="profPad" type="number" min="0" max="10" step="0.5"></label>
+          <label class="lbl" data-tip="Extra margin around each leaf box, added before the boxes are combined, so the scan area and the plant crop include it. The leaf segmenter gets the padded leaf box. 0 = off">Leaf padding (cm) <input id="profLeafPad" type="number" min="0" max="10" step="0.5"></label>
+          <label class="toggle" data-tip="Skip the bottom side's prescan: scan the top side's area, mirrored left↔right across the glass (the flipped leaf)"><input type="checkbox" id="profMirror"><span class="sw"></span>Use mirrored prescan detections for abaxial</label>
+        </div>
+      </div>
+      <div class="field"><span>Save as</span><div class="toggles" id="profFormats"></div></div>
+      <div class="estimate" id="profEstimate"></div>
+      <div class="field"><span>Save to</span>
+        <div class="out-dir"><code id="outDir"></code><button id="btnOutDir" class="small">Change</button><button id="btnOutShow" class="small">Show</button></div>
+      </div>
+      <label class="check" id="profPetioleRow" data-tip="Off: the leaf (_tl / _bl) is the blade only, the petiole is black like the background. On: the petiole is kept too. Holes are always black. ReSeg has its own tick."><input type="checkbox" id="profPetiole"> Include petiole in leaf segmentation</label>
+      <details class="classes" id="profClasses">
+        <summary>Auto area classes <span id="profClassCount" class="hint"></span><span class="tip" data-tip="Auto area is the box around every detection of a ticked class. Unticked classes are ignored.">i</span></summary>
+        <div class="class-cols" id="profClassList"></div>
+      </details>
+    </div>
+  </div>
+  <div id="modelsPill" class="pill pill-busy hidden"><span class="dot"></span><span class="txt"></span></div>
+  <div id="scannerPill" class="pill pill-off"><span class="dot"></span><span class="txt">Looking for scanner…</span></div>
+  <button id="btnSettings" class="icon-btn" data-tip="Settings">⚙</button>
+</header>
+
+<!-- SCAN -->
+<main class="workspace" id="tab-scan">
+  <section class="card" id="cardLeafId">
+    <div class="card-head"><h2>Leaf ID</h2><span class="spacer"></span>
+      <div class="jump head-jump"><input id="idJump" placeholder="Go to ID or #" spellcheck="false"><button id="idGo" class="small">Go</button></div></div>
+    <div class="current">
+      <button id="idPrev" data-tip="Previous leaf">◀</button>
+      <div class="current-id"><div id="curId" class="id-big"></div><div id="curPos" class="hint"></div></div>
+      <button id="idNext" data-tip="Next leaf">▶</button>
+    </div>
+    <hr>
+    <h4>Pattern <span class="tip" id="patternTip" data-tip="">i</span></h4>
+    <div class="seg-head"><span>Name</span><span>Kind</span><span>Value / range</span><span></span></div>
+    <div id="segments" class="segments"></div>
+    <div class="row">
+      <button id="segAdd" class="small">+ Segment</button>
+      <label class="lbl">Separator <input id="patSep" value="-" maxlength="3" style="width:3.2em;text-align:center"></label>
+    </div>
+    <div class="series" id="patSummary"></div>
+    <div class="prog hidden" id="prog">
+      <div class="prog-head"><div class="seg small" id="progTabs"></div><span class="count" id="progCount"></span></div>
+      <div class="prog-grid" id="progGrid"></div>
+      <div class="prog-key"><span><i></i>not scanned</span><span><i class="half"></i>one side</span><span><i class="done"></i>both sides</span><span data-tip="Checkering or fill in orange: a side's label QR code was not read, or it is not this leaf's ID"><i class="done warn"></i>QR issue</span></div>
+    </div>
+  </section>
+
+  <section class="card" id="cardLeaf">
+    <div class="card-head">
+      <h2>Leaf</h2><span id="leafTitle" class="leaf-title"></span>
+      <span class="spacer"></span>
+      <div class="box-key" id="boxKey" data-tip="Boxes on the prescan (↓ in the viewer, and while scanning)">
+        <span class="chip plant" data-tip="Union of the plant classes">Plant</span><span class="chip archival" data-tip="Union of the archival classes">Archival</span><span class="chip capture" data-tip="Scan area: both unions plus the padding">Scan area</span>
+      </div>
+      <div class="seg small prod-seg" id="prodSeg" data-tip="What the previews show">
+        <button data-view="x" data-tip="_previewbboxall: the prescan with every detection on its own (class and score; dashed = class not ticked)">Boxes</button><button data-view="u" data-tip="_previewbbox: the prescan with the plant and archival unions and the scan area">Boxes U</button><button data-view="a" data-tip="_ta / _ba: the whole scan (archival + plant)">Archival</button><button data-view="p" data-tip="_tp / _bp: cropped to the plant">Plant</button><button data-view="s" data-tip="_tl / _bl: the plant crop, leaf only, black background">Leaf</button>
+      </div>
+      <span id="leafState" class="hint"></span>
+    </div>
+    <div class="sides">
+      <div class="side" id="side-t"></div>
+      <div class="side" id="side-b"></div>
+      <div class="flip-ghost hidden" id="flipGhost" aria-hidden="true"><svg class="spin" viewBox="0 0 200 200"></svg><div class="ripple"></div><div class="word">FLIP</div><div class="clock" id="flipClock">0:00</div></div>
+    </div>
+    <div class="actionbar">
+      <div class="primary-row" id="primaryRow">
+        <button id="btnPrimary" class="primary big"><span class="fill" id="scanBar"></span><span class="status-line" id="scanStatus"></span>&nbsp;</button>
+        <button id="btnCancelScan" class="cancel hidden" data-tip="Cancel" aria-label="Cancel the scan"><span class="stop"></span></button>
+        <span class="plabel" id="primaryLabel"></span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- MEASURE -->
+<main class="workspace measure hidden" id="tab-measure">
+  <section class="card" id="cardMeasure">
+    <div class="card-head">
+      <h2>Measure</h2>
+      <button id="mLeafPrev" class="small" data-tip="Previous scanned leaf (←)">◀</button>
+      <select id="mLeaf" data-tip="Leaf to measure (or click one in the Scanned strip)"></select>
+      <button id="mLeafNext" class="small" data-tip="Next scanned leaf (→)">▶</button>
+      <div class="seg small" id="mSide"></div>
+      <span id="mSuffix" data-tip="The image being measured"></span>
+      <span class="spacer"></span>
+      <div class="box-key" data-tip="Boxes on the prescan">
+        <span class="chip plant" data-tip="Union of the plant classes">Plant</span><span class="chip archival" data-tip="Union of the archival classes">Archival</span><span class="chip capture" data-tip="Scan area: both unions plus the padding">Scan area</span>
+      </div>
+      <div class="seg small prod-seg" data-tip="Which product to measure on">
+        <button data-view="a" data-tip="_ta / _ba: the whole scan (archival + plant)">Archival</button><button data-view="p" data-tip="_tp / _bp: cropped to the plant">Plant</button><button data-view="s" data-tip="_tl / _bl: the plant crop, leaf only, black background">Leaf</button>
+      </div>
+    </div>
+    <div class="m-stage" id="mStage">
+      <div class="m-world hidden" id="mWorld"><img id="mImg" alt="" draggable="false"><svg id="mSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div class="m-empty" id="mEmpty"></div>
+      <div class="m-busy hidden" id="mBusy">loading full detail…</div>
+    </div>
+    <div class="m-bar">
+      <div class="seg small" id="mTool">
+        <button data-tool="line" data-tip="Straight line: click two points (L). Drag an end point to adjust.">Line</button><button data-tool="path" data-tip="Along a curve: click points, then double-click or Enter (P). Backspace removes the last point.">Path</button>
+      </div>
+      <span id="mReadout" class="m-readout"></span>
+      <span id="mCF" class="hint" data-tip="CF = pixels per cm, from the scan's dpi. All three products of a side share it."></span>
+      <button id="mZoomOut" class="small" data-tip="Zoom out (−) · pinch or ⌘ + scroll">−</button><span id="mZoom" class="m-zoom"></span><button id="mZoomIn" class="small" data-tip="Zoom in (+) · pinch or ⌘ + scroll">+</button>
+      <button id="mFit" class="small" data-tip="Fit (0) · scroll, Space + drag or right-drag to pan">Fit</button>
+    </div>
+  </section>
+  <section class="card" id="cardMeasures">
+    <div class="card-head"><h2>Measurements</h2><span class="tip" data-tip="Everything measured on this specimen, on any side or view. Record writes them, with the image details, scan options and CF, to one file per specimen.">i</span></div>
+    <div id="mList" class="m-list"></div>
+    <div class="field"><span>Notes</span><textarea id="mNotes" rows="3" maxlength="2000" placeholder="Short note for this specimen" spellcheck="false"></textarea></div>
+    <button id="mRecord" class="primary big" data-tip="Write the measurements and notes to the specimen's file">Record</button>
+    <div class="out-dir m-file"><code id="mFile"></code><button id="mFileShow" class="small hidden">Show</button></div>
+  </section>
+</main>
+
+<footer class="dock" id="dock">
+  <div class="dock-head">
+    <div class="seg small" id="dockSort" data-tip="Order of the Scanned strip"><button data-sort="time" data-tip="Newest first (the 80 newest)">Time</button><button data-sort="name" data-tip="By leaf ID: UM-001-A, UM-001-B, UM-002-A, …">Name</button></div>
+    <strong>Scanned</strong><span id="dockStats" class="hint"></span>
+    <span class="spacer"></span>
+    <button id="btnShowScans" class="small">Folder</button>
+  </div>
+  <div class="strip-wrap"><div id="leafStrip" class="leaf-strip"></div></div>
+</footer>
+
+<!-- CALIBRATE -->
+<main class="workspace hidden" id="tab-calibrate">
+  <div class="stack">
+    <section class="card" id="cardScanner">
+      <div class="card-head"><h2>Scanner</h2><span class="spacer"></span><button id="btnCaps" class="small">Details</button></div>
+      <dl class="facts" id="scannerFacts"></dl>
+    </section>
+
+    <section class="card" id="cardRun">
+      <div class="card-head"><h2>Calibration run</h2><span class="tip" data-tip="Scans the same area at every setting below. Leave the test items on the glass until it finishes.">i</span></div>
+      <div class="field"><span>Resolution</span><div class="checks" id="calDpis"></div></div>
+      <div class="field"><span>Color depth</span><div class="checks" id="calBits"></div></div>
+      <div class="field"><span>Area</span>
+        <div class="seg" id="calArea"></div>
+        <div class="row dims hidden" id="calCustom"><input id="calW" type="number" min="1" max="21.5" step="0.5"> × <input id="calH" type="number" min="1" max="29.7" step="0.5"> cm</div>
+      </div>
+      <div class="field"><span>Extras</span>
+        <label class="check"><input type="checkbox" id="calCorr"> Corrections <span class="tip" data-tip="7 more scans at 1200 dpi, 16-bit: each Epson correction alone, all together, and a repeat with none. The plain 1200 dpi scan is the baseline.">i</span></label>
+        <label class="check"><input type="checkbox" id="calComp"> Compression <span class="tip" data-tip="Re-saves the 1200 dpi 16-bit scan in lossless formats (TIFF ZIP/ZSTD/LZMA, PNG, JPEG 2000, JPEG XL, lossless JPEG) plus two lossy references. No extra scanning.">i</span></label>
+      </div>
+      <div class="series" id="calPlan"></div>
+      <div class="row">
+        <button id="btnCalStart" class="primary">Run</button>
+        <button id="btnCalStop" class="hidden">Stop after this scan</button>
+      </div>
+      <pre id="calLog" class="log hidden"></pre>
+    </section>
+  </div>
+
+  <section class="card gallery-card" id="cardGallery">
+    <div class="card-head">
+      <h2>Test images</h2>
+      <select id="runSelect"></select>
+      <span class="spacer"></span>
+      <button id="btnRunFolder" class="small">Folder</button>
+      <button id="btnRunDelete" class="small danger">Delete</button>
+    </div>
+    <div id="runBody"></div>
+  </section>
+</main>
+
+<!-- LIGHTBOX -->
+<div id="lightbox" class="lightbox hidden">
+  <div class="lb-inner">
+    <div class="lb-head"><strong id="lbTitle"></strong><span id="lbCaption" class="hint"></span><span class="spacer"></span>
+      <button id="lbOpen" class="small">Open file</button><button id="lbClose" class="small">Close</button></div>
+    <div class="lb-body">
+      <button class="lb-nav left" id="lbLeft" aria-label="Previous">◀</button><button class="lb-nav right" id="lbRight" aria-label="Next">▶</button>
+      <button class="lb-nav up" id="lbUp" aria-label="Row above">▲</button><button class="lb-nav down" id="lbDown" aria-label="Row below">▼</button>
+      <img id="lbImg" alt="">
+    </div>
+  </div>
+</div>
+
+<!-- PRESCAN CONFIRM: after the prescan (Auto area), before the full scan -->
+<div id="prescanConfirm" class="modal hidden">
+  <div class="pc-card">
+    <div class="pc-head"><h3>Scan area</h3><span class="id" id="pcId"></span><button class="x" id="pcCancel" data-tip="Cancel this scan">×</button></div>
+    <div class="pc-glass" id="pcGlass"><img id="pcImg" alt=""></div>
+    <div class="pc-side">
+      <h4>Confidence</h4>
+      <div class="pc-thr">
+        <input type="range" id="pcThr" min="0.05" max="0.95" step="0.01">
+        <output id="pcThrOut"></output>
+        <span class="hint" id="pcThrHint"></span>
+        <button class="small" id="pcThrReset">Back to the setting</button>
+      </div>
+      <h4>Detections</h4>
+      <div class="pc-list" id="pcList"></div>
+      <div class="pc-sum" id="pcSum"></div>
+    </div>
+    <div class="pc-foot"><button id="pcRescan" data-tip="Run the prescan again, e.g. after moving the leaf">Rescan Preview</button><span class="spacer"></span><button class="primary" id="pcGo" data-tip="Scan the blue area at this confidence">Go</button></div>
+  </div>
+</div>
+
+<!-- RESEG -->
+<div id="reseg" class="modal hidden">
+  <div class="modal-card reseg-card">
+    <h3>ReSeg <span id="resegName" class="mono"></span></h3>
+    <label class="lbl" data-tip="How sure the leaf segmenter must be to keep a piece (leaf, petiole). Lower keeps more, e.g. a petiole the mask cut off; higher keeps less.">Confidence <input id="resegConf" type="number" min="0.01" max="0.95" step="0.05"></label>
+    <label class="check" data-tip="Keep the petiole in the leaf (off: blade only). Holes are always black."><input type="checkbox" id="resegPetiole"> Include petiole</label>
+    <div class="hint"><span id="resegHint"></span> <span id="resegSrc"></span></div>
+    <div class="row"><span class="spacer"></span><button id="resegCancel">Cancel</button><button id="resegGo" class="primary">ReSeg</button></div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div id="settings" class="modal hidden">
+  <div class="modal-card">
+    <h3>Settings</h3>
+    <label class="check"><input type="checkbox" id="optSound"> Chime when a scan finishes</label>
+    <label class="check"><input type="checkbox" id="optFlip"> Show large flip reminder <span class="tip" data-tip="A big spinning FLIP between the two sides once the top is scanned, until the bottom scan starts, with a clock counting how long ago the top scan finished. It never blocks clicks.">i</span></label>
+    <label class="check"><input type="checkbox" id="optFringe"> Check scans for color fringing <span class="tip" data-tip="Looks for rows where the scan head stuttered. Red window = retake, gold = minor. Runs in the background while saving.">i</span></label>
+    <label class="check"><input type="checkbox" id="optHotkeys"> Enable hot keys <span class="tip" data-tip="Scan tab: Space or Enter = scan the next side · T = scan top · B = scan bottom · ← → = previous / next leaf. Off (default): these keys do nothing, so a stray key press cannot start a scan.">i</span></label>
+    <label class="check"><input type="checkbox" id="optMock"> Mock scanner <span class="tip" data-tip="No scanner needed: writes gradient test TIFFs to a separate _mock folder.">i</span></label>
+    <hr>
+    <div class="out-dir"><span class="muted">Settings file</span><code id="dataDir"></code><button id="btnShowData" class="small">Show</button></div>
+    <hr>
+    <div class="row"><span id="verTxt" class="muted"></span><span class="spacer"></span><button id="settingsClose" class="primary">Done</button></div>
+  </div>
+</div>
+
+<div id="tipBox" class="tipbox hidden" role="tooltip"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
